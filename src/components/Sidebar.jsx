@@ -1,7 +1,8 @@
 import React from 'react';
 import { Home, Users, UserSquare2, Menu, X, Settings, LogOut, Bot, Mail } from 'lucide-react';
+import { crmAssetUrl } from '../lib/api';
 
-export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePage }) {
+export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePage, currentUser, onLogout }) {
     const navItems = [
         { id: 'home', label: 'Dashboard', icon: Home },
         { id: 'users', label: 'Admin Users', icon: Users },
@@ -21,17 +22,14 @@ export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePa
             )}
 
             {/* Sidebar Container */}
-            <aside className={`fixed top-0 left-0 h-screen w-64 bg-slate-900 text-white z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+            <aside className={`fixed top-0 left-0 h-screen w-64 bg-slate-900 text-white z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
 
                 {/* Header / Logo */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800">
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-violet-500 flex items-center justify-center font-bold text-sm shadow-lg">
-                            HR
-                        </div>
-                        <span className="font-semibold tracking-tight text-lg text-white">Nexus CRM</span>
+                        <img src={crmAssetUrl('img/digi.png')} alt="DigiChefs" className="h-10 w-auto rounded-md bg-white px-2 py-1 object-contain" />
                     </div>
-                    <button className="lg:hidden text-slate-400 hover:text-white" onClick={toggleSidebar}>
+                    <button className="text-slate-400 hover:text-white" onClick={toggleSidebar}>
                         <X size={20} />
                     </button>
                 </div>
@@ -60,14 +58,21 @@ export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePa
 
                 {/* Footer Area */}
                 <div className="p-4 border-t border-slate-800">
+                    <div className="mb-3 rounded-2xl bg-slate-800/70 p-3">
+                        <div className="text-sm font-bold text-white truncate">{currentUser?.name || 'HR User'}</div>
+                        <div className="text-xs text-slate-400 truncate">{currentUser?.email || ''}</div>
+                        <div className="mt-2 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                            {currentUser?.role || 'User'}
+                        </div>
+                    </div>
                     <button className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-medium text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
                         <Settings size={18} className="text-slate-400" />
                         Settings
                     </button>
-                    <a href="/hr/login.php" className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-medium text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 mt-1">
+                    <button onClick={onLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-medium text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 mt-1">
                         <LogOut size={18} />
                         Logout
-                    </a>
+                    </button>
                 </div>
             </aside>
         </>

@@ -8,9 +8,7 @@ const initialFilters = {
     experience_min: '',
     experience_max: '',
     lead_status: '',
-    source: '',
     city: '',
-    relocate: '',
     current_ctc: '',
     expected_ctc: '',
     notice_period: '',
@@ -26,6 +24,40 @@ function Detail({ label, value }) {
             <div className="mt-1 text-sm font-semibold text-slate-800 whitespace-pre-wrap">{value || 'Not provided'}</div>
         </div>
     );
+}
+
+function formatSalaryForDisplay(value) {
+    const rawValue = String(value || '').trim();
+    if (rawValue === '') {
+        return '';
+    }
+
+    const normalized = rawValue.toLowerCase().replace(/[,₹\s]/g, '').replace(/rs\.?/g, '');
+    const salaryMatch = normalized.match(/^(\d+(?:\.\d+)?)(l|lac|lacs|lakh|lakhs|lpa|lps)?$/);
+    if (!salaryMatch) {
+        return rawValue;
+    }
+
+    const amount = Number(salaryMatch[1]);
+    if (!Number.isFinite(amount)) {
+        return rawValue;
+    }
+
+    let annualAmount = amount;
+    if (salaryMatch[2] || amount < 100) {
+        annualAmount = amount * 100000;
+    } else if (amount < 100000) {
+        annualAmount = amount * 12;
+    }
+
+    const lpa = annualAmount / 100000;
+    const formattedLpa = lpa.toLocaleString('en-IN', {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: Number.isInteger(lpa) ? 0 : 1,
+    });
+    const formattedAnnual = Math.round(annualAmount).toLocaleString('en-IN');
+
+    return `${formattedLpa} LPA (${formattedAnnual})`;
 }
 
 function AISearchCard({ card, onOpenActivity, onOpenResume }) {
@@ -81,12 +113,10 @@ function AISearchCard({ card, onOpenActivity, onOpenResume }) {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
                 <Detail label="Role" value={card.role} />
                 <Detail label="Status" value={card.status} />
-                <Detail label="Source" value={card.source} />
                 <Detail label="City" value={card.city} />
-                <Detail label="Relocate" value={card.relocate} />
                 <Detail label="Experience" value={card.experience} />
-                <Detail label="Current CTC" value={card.current_ctc} />
-                <Detail label="Expected CTC" value={card.expected_ctc} />
+                <Detail label="Current CTC" value={formatSalaryForDisplay(card.current_ctc)} />
+                <Detail label="Expected CTC" value={formatSalaryForDisplay(card.expected_ctc)} />
                 <Detail label="Notice" value={card.notice_period} />
                 <Detail label="Qualification" value={card.qualification} />
                 <Detail label="Current Title" value={card.current_title} />
@@ -334,13 +364,6 @@ export default function AISearchPage() {
                         </select>
                     </label>
                     <label className="text-sm font-bold text-slate-700">
-                        Source
-                        <select name="source" value={filters.source} onChange={updateFilter} className="mt-2 w-full px-3 py-3 rounded-lg border border-slate-200 bg-white text-sm font-medium">
-                            <option value="">Please select</option>
-                            {(options.sources || []).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-                        </select>
-                    </label>
-                    <label className="text-sm font-bold text-slate-700">
                         Date Added
                         <select name="interval" value={filters.interval} onChange={updateFilter} className="mt-2 w-full px-3 py-3 rounded-lg border border-slate-200 bg-white text-sm font-medium">
                             {(options.date_intervals || [{ id: '', name: 'Please select' }]).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -349,14 +372,6 @@ export default function AISearchPage() {
                     <label className="text-sm font-bold text-slate-700">
                         Location
                         <input name="city" value={filters.city} onChange={updateFilter} placeholder="Mumbai, Pune" className="mt-2 w-full px-3 py-3 rounded-lg border border-slate-200 text-sm" />
-                    </label>
-                    <label className="text-sm font-bold text-slate-700">
-                        Willing to Relocate
-                        <select name="relocate" value={filters.relocate} onChange={updateFilter} className="mt-2 w-full px-3 py-3 rounded-lg border border-slate-200 bg-white text-sm font-medium">
-                            <option value="">Please select</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                        </select>
                     </label>
                     <label className="text-sm font-bold text-slate-700">
                         Current CTC

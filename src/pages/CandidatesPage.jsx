@@ -13,6 +13,64 @@ const initialFilters = {
     date_to: '',
 };
 
+function formatExperienceForDisplay(value) {
+    const rawValue = String(value || '').trim();
+    if (rawValue === '') {
+        return '0 Years';
+    }
+
+    const numericMatch = rawValue.match(/\d+(?:\.\d+)?/);
+    if (!numericMatch) {
+        return rawValue;
+    }
+
+    const amount = Number(numericMatch[0]);
+    if (!Number.isFinite(amount)) {
+        return rawValue;
+    }
+
+    const years = Number.isInteger(amount) && amount > 7 ? amount / 12 : amount;
+    const formattedYears = years.toLocaleString('en-IN', {
+        maximumFractionDigits: 1,
+        minimumFractionDigits: Number.isInteger(years) ? 0 : 1,
+    });
+
+    return `${formattedYears} Years`;
+}
+
+function formatSalaryForDisplay(value) {
+    const rawValue = String(value || '').trim();
+    if (rawValue === '') {
+        return '0 LPA';
+    }
+
+    const normalized = rawValue.toLowerCase().replace(/[,₹\s]/g, '').replace(/rs\.?/g, '');
+    const salaryMatch = normalized.match(/^(\d+(?:\.\d+)?)(l|lac|lacs|lakh|lakhs|lpa|lps)?$/);
+    if (!salaryMatch) {
+        return rawValue;
+    }
+
+    const amount = Number(salaryMatch[1]);
+    if (!Number.isFinite(amount)) {
+        return rawValue;
+    }
+
+    let annualAmount = amount;
+    if (salaryMatch[2] || amount < 100) {
+        annualAmount = amount * 100000;
+    } else if (amount < 100000) {
+        annualAmount = amount * 12;
+    }
+
+    const lpa = annualAmount / 100000;
+    const formattedLpa = lpa.toLocaleString('en-IN', {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: Number.isInteger(lpa) ? 0 : 1,
+    });
+
+    return `${formattedLpa} LPA`;
+}
+
 export default function CandidatesPage() {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -244,6 +302,14 @@ export default function CandidatesPage() {
 
                                         <td className="px-6 py-4">
                                             <div className="font-semibold text-slate-900 text-[15px]">{candidate.name || 'Unnamed candidate'}</div>
+                                            {candidate.is_careers_import ? (
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                                    <span className="inline-flex rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-black text-white shadow-sm">
+                                                        Careers Import
+                                                    </span>
+                                                    <span className="text-xs text-slate-400">resume-only email</span>
+                                                </div>
+                                            ) : null}
                                             <div className="text-slate-500 mt-0.5">{candidate.email || '-'}</div>
                                             <div className="text-slate-500 mt-0.5">{candidate.phone || '-'}</div>
                                         </td>
@@ -256,8 +322,10 @@ export default function CandidatesPage() {
                                         </td>
 
                                         <td className="px-6 py-4">
-                                            <div className="text-slate-700 font-medium">{candidate.experience ? `${candidate.experience} Years` : '0 Years'}</div>
-                                            <div className="text-emerald-600 font-semibold text-xs mt-1">Rs {candidate.current_ctc || '0'} to Rs {candidate.expected_ctc || '0'}</div>
+                                            <div className="text-slate-700 font-medium">{formatExperienceForDisplay(candidate.experience)}</div>
+                                            <div className="text-emerald-600 font-semibold text-xs mt-1">
+                                                {formatSalaryForDisplay(candidate.current_ctc)} to {formatSalaryForDisplay(candidate.expected_ctc)}
+                                            </div>
                                         </td>
 
                                         <td className="px-6 py-4">

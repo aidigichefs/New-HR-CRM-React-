@@ -5,10 +5,40 @@ import UsersPage from './pages/UsersPage';
 import CandidatesPage from './pages/CandidatesPage';
 import AISearchPage from './pages/AISearchPage';
 import SendEmailPage from './pages/SendEmailPage';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import { crmAssetUrl } from './lib/api';
 
 function App() {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('hr_crm_user') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [activePage, setActivePage] = useState('home');
+
+  const handleLogin = (user) => {
+    localStorage.setItem('hr_crm_user', JSON.stringify(user));
+    setCurrentUser(user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('hr_crm_user');
+    setCurrentUser(null);
+    setActivePage('home');
+  };
+
+  const handleUserUpdated = (user) => {
+    localStorage.setItem('hr_crm_user', JSON.stringify(user));
+    setCurrentUser(user);
+  };
+
+  if (!currentUser) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -18,43 +48,27 @@ function App() {
         toggleSidebar={() => setSidebarOpen(!isSidebarOpen)}
         activePage={activePage}
         setActivePage={setActivePage}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:ml-64 flex flex-col h-screen overflow-hidden">
+      <div className={`flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-0'}`}>
 
-        {/* Mobile Header */}
-        <header className="lg:hidden h-16 bg-white border-b border-slate-200 flex items-center px-4 shrink-0 shadow-sm z-30">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 text-slate-600 hover:text-blue-600">
+        {/* Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center px-4 shrink-0 shadow-sm z-30">
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 text-slate-600 hover:text-emerald-700">
             <Menu size={24} />
           </button>
-          <div className="ml-3 font-semibold text-slate-800">
-            {activePage === 'home' && 'Dashboard'}
-            {activePage === 'users' && 'Admin Users'}
-            {activePage === 'candidates' && 'Candidates'}
-            {activePage === 'ai-search' && 'AI Search'}
-            {activePage === 'send-email' && 'Send Email'}
+          <div className="ml-3 flex items-center gap-3">
+            <img src={crmAssetUrl('img/digi.png')} alt="DigiChefs" className="h-9 w-auto object-contain" />
           </div>
         </header>
 
         {/* Dynamic Page Views */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8fafc]">
 
-          {activePage === 'home' && (
-            <div className="animate-in fade-in duration-500 h-full flex flex-col items-center justify-center text-center">
-              <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 text-slate-900">
-                Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-violet-600">Nexus CRM</span>
-              </h1>
-              <p className="text-slate-500 max-w-lg mb-8 text-lg">
-                Your beautiful, new light-themed dashboard. Use the sidebar to navigate to the live Super Admin Users list and Candidate Data.
-              </p>
-              <button
-                onClick={() => setActivePage('candidates')}
-                className="px-6 py-3 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-colors">
-                View Candidates
-              </button>
-            </div>
-          )}
+          {activePage === 'home' && <DashboardPage currentUser={currentUser} onUserUpdated={handleUserUpdated} />}
 
           {activePage === 'users' && <UsersPage />}
 
