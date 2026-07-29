@@ -72,9 +72,9 @@ function App() {
 
           {activePage === 'users' && <UsersPage />}
 
-          {activePage === 'candidates' && <CandidatesPage />}
+          {activePage === 'candidates' && <CandidatesPage currentUser={currentUser} />}
 
-          {activePage === 'ai-search' && <AISearchPage />}
+          {activePage === 'ai-search' && <AISearchPage currentUser={currentUser} />}
 
           {activePage === 'send-email' && <SendEmailPage />}
 

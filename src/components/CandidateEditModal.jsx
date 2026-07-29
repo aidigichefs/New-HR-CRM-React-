@@ -22,7 +22,7 @@ function TextAreaField({ label, value }) {
     );
 }
 
-export default function CandidateEditModal({ candidate, onClose, onUpdated }) {
+export default function CandidateEditModal({ candidate, currentUser, onClose, onUpdated }) {
     const [activeTab, setActiveTab] = useState('details');
     const [timeline, setTimeline] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -86,6 +86,7 @@ export default function CandidateEditModal({ candidate, onClose, onUpdated }) {
                     lead_id: candidate.id,
                     status_id: Number(statusId),
                     comment: statusComment,
+                    staff_id: currentUser?.id || 0,
                 }),
             });
             const json = await response.json();

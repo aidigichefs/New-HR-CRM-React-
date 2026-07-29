@@ -71,7 +71,7 @@ function formatSalaryForDisplay(value) {
     return `${formattedLpa} LPA`;
 }
 
-export default function CandidatesPage() {
+export default function CandidatesPage({ currentUser }) {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingCandidate, setEditingCandidate] = useState(null);
@@ -362,6 +362,7 @@ export default function CandidatesPage() {
             {editingCandidate && (
                 <CandidateEditModal
                     candidate={editingCandidate}
+                    currentUser={currentUser}
                     onClose={() => setEditingCandidate(null)}
                     onUpdated={handleCandidateUpdated}
                 />

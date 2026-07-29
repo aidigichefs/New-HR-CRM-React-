@@ -145,7 +145,7 @@ function AISearchCard({ card, onOpenActivity, onOpenResume }) {
     );
 }
 
-export default function AISearchPage() {
+export default function AISearchPage({ currentUser }) {
     const [filters, setFilters] = useState(initialFilters);
     const [options, setOptions] = useState({ roles: [], statuses: [], sources: [], date_intervals: [] });
     const [cards, setCards] = useState([]);
@@ -489,6 +489,7 @@ export default function AISearchPage() {
             {editingCandidate && (
                 <CandidateEditModal
                     candidate={editingCandidate}
+                    currentUser={currentUser}
                     onClose={() => setEditingCandidate(null)}
                     onUpdated={handleCandidateUpdated}
                 />
