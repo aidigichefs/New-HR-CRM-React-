@@ -7,7 +7,7 @@ import AISearchPage from './pages/AISearchPage';
 import SendEmailPage from './pages/SendEmailPage';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import { crmAssetUrl } from './lib/api';
+import BrandLogo from './components/BrandLogo';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -40,6 +40,8 @@ function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
+  const pageClass = (pageId) => (activePage === pageId ? 'block' : 'hidden');
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar Component */}
@@ -61,22 +63,32 @@ function App() {
             <Menu size={24} />
           </button>
           <div className="ml-3 flex items-center gap-3">
-            <img src={crmAssetUrl('img/digi.png')} alt="DigiChefs" className="h-9 w-auto object-contain" />
+            <BrandLogo compact />
           </div>
         </header>
 
         {/* Dynamic Page Views */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8fafc]">
 
-          {activePage === 'home' && <DashboardPage currentUser={currentUser} onUserUpdated={handleUserUpdated} />}
+          <div className={pageClass('home')}>
+            <DashboardPage currentUser={currentUser} onUserUpdated={handleUserUpdated} />
+          </div>
 
-          {activePage === 'users' && <UsersPage />}
+          <div className={pageClass('users')}>
+            <UsersPage />
+          </div>
 
-          {activePage === 'candidates' && <CandidatesPage currentUser={currentUser} />}
+          <div className={pageClass('candidates')}>
+            <CandidatesPage currentUser={currentUser} />
+          </div>
 
-          {activePage === 'ai-search' && <AISearchPage currentUser={currentUser} />}
+          <div className={pageClass('ai-search')}>
+            <AISearchPage currentUser={currentUser} />
+          </div>
 
-          {activePage === 'send-email' && <SendEmailPage />}
+          <div className={pageClass('send-email')}>
+            <SendEmailPage />
+          </div>
 
         </main>
       </div>

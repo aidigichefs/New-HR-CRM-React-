@@ -1,6 +1,6 @@
 import React from 'react';
 import { Home, Users, UserSquare2, Menu, X, Settings, LogOut, Bot, Mail } from 'lucide-react';
-import { crmAssetUrl } from '../lib/api';
+import BrandLogo from './BrandLogo';
 
 export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePage, currentUser, onLogout }) {
     const navItems = [
@@ -27,7 +27,9 @@ export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePa
                 {/* Header / Logo */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800">
                     <div className="flex items-center gap-2">
-                        <img src={crmAssetUrl('img/digi.png')} alt="DigiChefs" className="h-10 w-auto rounded-md bg-white px-2 py-1 object-contain" />
+                        <div className="rounded-md bg-white px-3 py-2">
+                            <BrandLogo compact />
+                        </div>
                     </div>
                     <button className="text-slate-400 hover:text-white" onClick={toggleSidebar}>
                         <X size={20} />

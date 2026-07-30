@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Camera, Loader2, Save, UserRound } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Bot, Camera, Loader2, RefreshCw, Save, UserRound } from 'lucide-react';
 import { apiUrl, crmAssetUrl } from '../lib/api';
 
 function splitName(name = '') {
@@ -21,6 +21,8 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
     });
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
+    const [usage, setUsage] = useState(null);
+    const [usageLoading, setUsageLoading] = useState(false);
 
     const profileUrl = form.profile_image ? crmAssetUrl(form.profile_image) : '';
     const initials = `${form.firstname?.[0] || ''}${form.lastname?.[0] || ''}`.toUpperCase() || 'HR';
@@ -28,6 +30,34 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
     const updateField = (event) => {
         setForm({ ...form, [event.target.name]: event.target.value });
     };
+
+    const formatNumber = (value) => Number(value || 0).toLocaleString('en-IN');
+    const formatCost = (value, currency = 'USD') => {
+        const amount = Number(value || 0);
+        return `${currency || 'USD'} ${amount.toLocaleString('en-IN', {
+            minimumFractionDigits: 4,
+            maximumFractionDigits: 8,
+        })}`;
+    };
+
+    const fetchUsage = async () => {
+        setUsageLoading(true);
+        try {
+            const response = await fetch(apiUrl(`get_ai_usage_summary.php?staff_id=${encodeURIComponent(currentUser?.id || 0)}`));
+            const json = await response.json();
+            if (json.success) {
+                setUsage(json.data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch AI usage summary:', error);
+        }
+        setUsageLoading(false);
+    };
+
+    useEffect(() => {
+        fetchUsage();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser?.id]);
 
     const saveProfile = async (event) => {
         event.preventDefault();
@@ -131,6 +161,76 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
                     </button>
                 </form>
             </div>
+
+            <section className="glass-panel rounded-3xl p-6 border border-white/70 mt-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                    <div className="flex items-center gap-2">
+                        <Bot className="text-blue-700" size={22} />
+                        <div>
+                            <h2 className="text-xl font-black text-slate-950">AI API Usage</h2>
+                            <p className="text-sm text-slate-500">Token usage logged from HR CRM AI Search batches.</p>
+                        </div>
+                    </div>
+                    <button type="button" onClick={fetchUsage} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                        <RefreshCw size={16} className={usageLoading ? 'animate-spin text-blue-600' : ''} />
+                        Refresh usage
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-black uppercase tracking-widest text-slate-400">My Tokens</div>
+                        <div className="mt-2 text-3xl font-black text-slate-950">{formatNumber(usage?.current_user?.total_tokens)}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatNumber(usage?.current_user?.runs)} AI runs</div>
+                        <div className="mt-3 text-sm font-black text-emerald-700">{formatCost(usage?.current_user?.total_cost, usage?.current_user?.currency)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-black uppercase tracking-widest text-slate-400">Today</div>
+                        <div className="mt-2 text-3xl font-black text-emerald-700">{formatNumber(usage?.today?.total_tokens)}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatNumber(usage?.today?.runs)} AI runs today</div>
+                        <div className="mt-3 text-sm font-black text-emerald-700">{formatCost(usage?.today?.total_cost, usage?.today?.currency)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-black uppercase tracking-widest text-slate-400">All Users</div>
+                        <div className="mt-2 text-3xl font-black text-blue-700">{formatNumber(usage?.total?.total_tokens)}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatNumber(usage?.total?.runs)} total AI runs</div>
+                        <div className="mt-3 text-sm font-black text-blue-700">{formatCost(usage?.total?.total_cost, usage?.total?.currency)}</div>
+                    </div>
+                </div>
+
+                <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-500">
+                            <tr>
+                                <th className="px-4 py-3">HR User</th>
+                                <th className="px-4 py-3">Input</th>
+                                <th className="px-4 py-3">Output</th>
+                                <th className="px-4 py-3">Total Tokens</th>
+                                <th className="px-4 py-3">Price</th>
+                                <th className="px-4 py-3">Runs</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {(usage?.users || []).length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">No AI usage logged yet.</td>
+                                </tr>
+                            ) : (
+                                usage.users.map((item) => (
+                                    <tr key={item.staff_id}>
+                                        <td className="px-4 py-3 font-bold text-slate-800">{item.staff_name}</td>
+                                        <td className="px-4 py-3 text-slate-600">{formatNumber(item.input_tokens)}</td>
+                                        <td className="px-4 py-3 text-slate-600">{formatNumber(item.output_tokens)}</td>
+                                        <td className="px-4 py-3 font-black text-slate-950">{formatNumber(item.total_tokens)}</td>
+                                        <td className="px-4 py-3 font-black text-emerald-700">{formatCost(item.total_cost, item.currency)}</td>
+                                        <td className="px-4 py-3 text-slate-600">{formatNumber(item.runs)}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     );
 }

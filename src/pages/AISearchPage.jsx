@@ -154,6 +154,7 @@ export default function AISearchPage({ currentUser }) {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [progress, setProgress] = useState({ processed: 0, total: 50, batch: 0 });
+    const [usageTotals, setUsageTotals] = useState({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
     const [editingCandidate, setEditingCandidate] = useState(null);
     const [resumePreview, setResumePreview] = useState(null);
     const [scoreSort, setScoreSort] = useState('desc');
@@ -185,6 +186,7 @@ export default function AISearchPage({ currentUser }) {
         Object.entries(filters).forEach(([key, value]) => formData.append(key, value));
         formData.append('offset', String(offset));
         formData.append('batch_size', '10');
+        formData.append('staff_id', String(currentUser?.id || 0));
         formData.set('total_limit', String(totalLimit));
 
         const response = await fetch(apiUrl('ai_resume_search.php'), {
@@ -206,6 +208,7 @@ export default function AISearchPage({ currentUser }) {
         setSummary('');
         setFiltersUsed({});
         setMessage('');
+        setUsageTotals({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
         setLoading(true);
         stopRequestedRef.current = false;
 
@@ -228,6 +231,13 @@ export default function AISearchPage({ currentUser }) {
                 setFiltersUsed(result.filters_used || {});
                 if (result.summary) {
                     setSummary(result.summary);
+                }
+                if (result.usage) {
+                    setUsageTotals((currentUsage) => ({
+                        input_tokens: Number(currentUsage.input_tokens || 0) + Number(result.usage.input_tokens || 0),
+                        output_tokens: Number(currentUsage.output_tokens || 0) + Number(result.usage.output_tokens || 0),
+                        total_tokens: Number(currentUsage.total_tokens || 0) + Number(result.usage.total_tokens || 0),
+                    }));
                 }
 
                 const batch = result.batch || {};
@@ -267,6 +277,7 @@ export default function AISearchPage({ currentUser }) {
         setFiltersUsed({});
         setMessage('');
         setProgress({ processed: 0, total: 50, batch: 0 });
+        setUsageTotals({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
     };
 
     const cardToCandidate = (card) => ({
@@ -416,6 +427,10 @@ export default function AISearchPage({ currentUser }) {
                                 className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-300"
                                 style={{ width: `${Math.min(100, Math.round((progress.processed / Math.max(progress.total, 1)) * 100))}%` }}
                             />
+                        </div>
+                        <div className="mt-2 text-xs font-semibold text-slate-500">
+                            Tokens used: {Number(usageTotals.total_tokens || 0).toLocaleString('en-IN')}
+                            {' '}({Number(usageTotals.input_tokens || 0).toLocaleString('en-IN')} input / {Number(usageTotals.output_tokens || 0).toLocaleString('en-IN')} output)
                         </div>
                     </div>
                     <div className="flex gap-2">

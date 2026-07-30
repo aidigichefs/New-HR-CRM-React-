@@ -8,6 +8,7 @@ export default function UsersPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+    const [loadError, setLoadError] = useState('');
 
     const [formData, setFormData] = useState({
         firstname: '',
@@ -21,14 +22,20 @@ export default function UsersPage() {
 
     const fetchUsers = async () => {
         setLoading(true);
+        setLoadError('');
         try {
             const response = await fetch(apiUrl('get_users.php'));
             const json = await response.json();
-            if (json.success) {
+            if (response.ok && json.success) {
                 setUsers(json.data);
+            } else {
+                setUsers([]);
+                setLoadError(json.message || 'Could not load users.');
             }
         } catch (err) {
             console.error('Failed to fetch users:', err);
+            setUsers([]);
+            setLoadError(err.message || 'Failed to fetch users.');
         }
         setLoading(false);
     };
@@ -88,6 +95,11 @@ export default function UsersPage() {
             </div>
 
             <div className="glass-panel rounded-2xl overflow-hidden">
+                {loadError && (
+                    <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                        {loadError}
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
