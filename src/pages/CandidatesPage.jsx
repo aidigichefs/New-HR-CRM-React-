@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Eye, Edit, Filter, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, RefreshCw, Eye, Edit, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import CandidateEditModal from '../components/CandidateEditModal';
 import { apiUrl } from '../lib/api';
 
 const initialFilters = {
-    search: '',
+    role: '',
     status: '',
     city: '',
     current_ctc: '',
@@ -78,6 +78,7 @@ export default function CandidatesPage({ currentUser }) {
     const [filters, setFilters] = useState(initialFilters);
     const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
+    const [roles, setRoles] = useState([]);
 
     const fetchCandidates = async (page = pagination.page, nextFilters = appliedFilters) => {
         setLoading(true);
@@ -109,6 +110,22 @@ export default function CandidatesPage({ currentUser }) {
         fetchCandidates(1, appliedFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [appliedFilters]);
+
+    useEffect(() => {
+        const fetchOptions = async () => {
+            try {
+                const response = await fetch(apiUrl('get_candidate_options.php'));
+                const json = await response.json();
+                if (json.success) {
+                    setRoles(Array.isArray(json.data?.roles) ? json.data.roles : []);
+                }
+            } catch (error) {
+                console.error('Failed to load candidate roles:', error);
+            }
+        };
+
+        fetchOptions();
+    }, []);
 
     const handleFilterChange = (event) => {
         setFilters({ ...filters, [event.target.name]: event.target.value });
@@ -157,6 +174,20 @@ export default function CandidatesPage({ currentUser }) {
         });
     };
 
+    const formatNoticePeriod = (value) => {
+        const rawValue = String(value ?? '').trim();
+        if (rawValue === '') {
+            return 'Not provided';
+        }
+
+        const numericValue = Number(rawValue);
+        if (Number.isFinite(numericValue)) {
+            return numericValue === 0 ? 'Immediate' : `${numericValue} days`;
+        }
+
+        return rawValue;
+    };
+
     return (
         <div className="animate-in fade-in duration-500">
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
@@ -173,15 +204,18 @@ export default function CandidatesPage({ currentUser }) {
 
             <form onSubmit={applyFilters} className="glass-panel rounded-2xl p-4 mb-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
-                    <div className="relative xl:col-span-2">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            name="search"
-                            value={filters.search}
+                    <div className="xl:col-span-2">
+                        <select
+                            name="role"
+                            value={filters.role}
                             onChange={handleFilterChange}
-                            placeholder="Search name, email, phone, role..."
-                            className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white shadow-sm text-sm"
-                        />
+                            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white shadow-sm text-sm"
+                        >
+                            <option value="">All roles</option>
+                            {roles.map((role) => (
+                                <option key={role.id} value={role.id}>{role.name}</option>
+                            ))}
+                        </select>
                     </div>
                     <input name="status" value={filters.status} onChange={handleFilterChange} placeholder="Status ID" className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm" />
                     <input name="city" value={filters.city} onChange={handleFilterChange} placeholder="City" className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm" />
@@ -220,20 +254,21 @@ export default function CandidatesPage({ currentUser }) {
                                 <th className="px-6 py-4">Candidate</th>
                                 <th className="px-6 py-4">Roles</th>
                                 <th className="px-6 py-4">Exp & Salary</th>
-                                <th className="px-6 py-4">Status & Source</th>
+                                <th className="px-6 py-4">Notice Period</th>
+                                <th className="px-6 py-4">Date Added</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                    <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                                         <Loader2 size={32} className="animate-spin mx-auto mb-2 text-blue-500" />
                                         Fetching Candidates...
                                     </td>
                                 </tr>
                             ) : candidates.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                    <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                                         No candidates found.
                                     </td>
                                 </tr>
@@ -329,10 +364,11 @@ export default function CandidatesPage({ currentUser }) {
                                         </td>
 
                                         <td className="px-6 py-4">
-                                            <span className="inline-block px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-bold mb-1.5 border border-blue-100 tracking-wide">
-                                                {candidate.status || 'Pending'}
-                                            </span>
-                                            <div className="text-xs font-medium text-slate-400 uppercase">{candidate.source || 'Unknown'}</div>
+                                            <div className="text-slate-700 font-semibold">{formatNoticePeriod(candidate.notice_period)}</div>
+                                        </td>
+
+                                        <td className="px-6 py-4">
+                                            <div className="text-slate-700 font-medium">{formatShortDate(candidate.date_added) || 'Not provided'}</div>
                                         </td>
                                     </tr>
                                     );

@@ -60,6 +60,10 @@ function formatSalaryForDisplay(value) {
     return `${formattedLpa} LPA (${formattedAnnual})`;
 }
 
+function progressPercent(processed, total) {
+    return Math.min(100, Math.max(0, Math.round((Number(processed || 0) / Math.max(Number(total || 1), 1)) * 100)));
+}
+
 function AISearchCard({ card, onOpenActivity, onOpenResume }) {
     return (
         <article className="glass-panel rounded-2xl p-5 shadow-sm border border-slate-200/80">
@@ -158,12 +162,106 @@ export default function AISearchPage({ currentUser }) {
     const [editingCandidate, setEditingCandidate] = useState(null);
     const [resumePreview, setResumePreview] = useState(null);
     const [scoreSort, setScoreSort] = useState('desc');
+    const [searchHistory, setSearchHistory] = useState([]);
+    const [activeHistoryId, setActiveHistoryId] = useState(null);
+    const [serverHistoryId, setServerHistoryId] = useState(0);
+    const [isFinalBatch, setIsFinalBatch] = useState(false);
+    const [availableCandidateCount, setAvailableCandidateCount] = useState(0);
     const abortControllerRef = useRef(null);
     const stopRequestedRef = useRef(false);
 
     useEffect(() => {
         fetchOptions();
     }, []);
+
+    useEffect(() => {
+        fetchAiSearchHistory();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser?.id, currentUser?.session_token]);
+
+    const aiHistoryStorageKey = () => `hr_ai_search_history_${currentUser?.id || 'guest'}`;
+
+    const mapDbHistoryItem = (item) => ({
+        local_id: `db_${item.id}`,
+        server_history_id: item.id,
+        title: item.title || 'AI Search',
+        filters: item.filters || {},
+        filters_used: item.filters_used || {},
+        summary: item.summary || '',
+        cards: Array.isArray(item.cards) ? item.cards : [],
+        progress: {
+            processed: Number(item.processed_count || 0),
+            total: Number(item.total_limit || 50),
+            batch: Math.ceil(Number(item.processed_count || 0) / 10),
+        },
+        usage: item.usage || { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+        total_available: Number(item.total_available || 0),
+        is_final: ['completed', 'empty'].includes(String(item.status || '').toLowerCase()) || Number(item.processed_count || 0) >= Number(item.total_limit || 50),
+        updated_at: item.updated_at,
+    });
+
+    const loadLocalHistoryFallback = () => {
+        try {
+            const savedHistory = JSON.parse(localStorage.getItem(aiHistoryStorageKey()) || '[]');
+            setSearchHistory(Array.isArray(savedHistory) ? savedHistory.slice(0, 5) : []);
+        } catch {
+            setSearchHistory([]);
+        }
+    };
+
+    const fetchAiSearchHistory = async () => {
+        if (!currentUser?.session_token) {
+            loadLocalHistoryFallback();
+            return;
+        }
+
+        try {
+            const response = await fetch(apiUrl('get_ai_search_history.php'), {
+                headers: {
+                    'X-HR-SESSION': currentUser.session_token,
+                },
+            });
+            const json = await response.json();
+            if (json.success) {
+                const dbHistory = Array.isArray(json.data) ? json.data.map(mapDbHistoryItem) : [];
+                setSearchHistory(dbHistory);
+                localStorage.setItem(aiHistoryStorageKey(), JSON.stringify(dbHistory));
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to load AI search history:', error);
+        }
+
+        loadLocalHistoryFallback();
+    };
+
+    const saveHistoryItem = (item) => {
+        let currentHistory = searchHistory;
+        try {
+            const savedHistory = JSON.parse(localStorage.getItem(aiHistoryStorageKey()) || '[]');
+            if (Array.isArray(savedHistory)) {
+                currentHistory = savedHistory;
+            }
+        } catch {
+            currentHistory = searchHistory;
+        }
+
+        const nextHistory = [
+            item,
+            ...currentHistory.filter((historyItem) => historyItem.local_id !== item.local_id),
+        ].slice(0, 5);
+        setSearchHistory(nextHistory);
+        localStorage.setItem(aiHistoryStorageKey(), JSON.stringify(nextHistory));
+    };
+
+    const buildHistoryTitle = (filterValues) => {
+        const selectedRole = (options.roles || []).find((role) => String(role.id) === String(filterValues.role));
+        return [
+            selectedRole?.name || 'AI Search',
+            filterValues.city,
+            filterValues.experience_min || filterValues.experience_max ? `${filterValues.experience_min || 0}-${filterValues.experience_max || 'any'} yrs` : '',
+        ].filter(Boolean).join(' | ');
+    };
 
     const fetchOptions = async () => {
         try {
@@ -181,13 +279,16 @@ export default function AISearchPage({ currentUser }) {
         setFilters({ ...filters, [event.target.name]: event.target.value });
     };
 
-    const runBatch = async (offset, totalLimit, signal) => {
+    const runBatch = async (offset, totalLimit, signal, filterValues = filters, historyId = serverHistoryId) => {
         const formData = new FormData();
-        Object.entries(filters).forEach(([key, value]) => formData.append(key, value));
+        Object.entries(filterValues).forEach(([key, value]) => formData.append(key, value));
         formData.append('offset', String(offset));
         formData.append('batch_size', '10');
         formData.append('staff_id', String(currentUser?.id || 0));
         formData.set('total_limit', String(totalLimit));
+        if (historyId) {
+            formData.append('history_id', String(historyId));
+        }
 
         const response = await fetch(apiUrl('ai_resume_search.php'), {
             method: 'POST',
@@ -212,52 +313,158 @@ export default function AISearchPage({ currentUser }) {
         setLoading(true);
         stopRequestedRef.current = false;
 
-        const totalLimit = Math.max(10, Math.min(50, Number(filters.total_limit || 50)));
+        const filterSnapshot = { ...filters };
+        const localHistoryId = `search_${Date.now()}`;
+        const totalLimit = Math.max(10, Math.min(50, Number(filterSnapshot.total_limit || 50)));
+        setActiveHistoryId(localHistoryId);
+        setServerHistoryId(0);
+        setIsFinalBatch(false);
+        setAvailableCandidateCount(0);
         setProgress({ processed: 0, total: totalLimit, batch: 0 });
 
         try {
-            let offset = 0;
-            let batchNumber = 1;
-            let isFinal = false;
+            let activeServerHistoryId = 0;
+            const batchNumber = 1;
+            let activeFiltersUsed = {};
+            let activeSummary = '';
+            let activeUsageTotals = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
 
-            while (!isFinal && offset < totalLimit && !stopRequestedRef.current) {
-                setProgress({ processed: offset, total: totalLimit, batch: batchNumber });
-                abortControllerRef.current = new AbortController();
-                const result = await runBatch(offset, totalLimit, abortControllerRef.current.signal);
-                if (stopRequestedRef.current) {
-                    break;
+            setProgress({ processed: 0, total: totalLimit, batch: batchNumber });
+            abortControllerRef.current = new AbortController();
+            const result = await runBatch(0, totalLimit, abortControllerRef.current.signal, filterSnapshot, activeServerHistoryId);
+            if (!stopRequestedRef.current) {
+                activeServerHistoryId = Number(result.history_id || activeServerHistoryId || 0);
+                if (activeServerHistoryId) {
+                    setServerHistoryId(activeServerHistoryId);
                 }
-                setCards((currentCards) => [...currentCards, ...(result.cards || [])]);
-                setFiltersUsed(result.filters_used || {});
+                const accumulatedCards = result.cards || [];
+                activeFiltersUsed = result.filters_used || activeFiltersUsed;
+                setCards(accumulatedCards);
+                setFiltersUsed(activeFiltersUsed);
                 if (result.summary) {
-                    setSummary(result.summary);
+                    activeSummary = result.summary;
+                    setSummary(activeSummary);
                 }
                 if (result.usage) {
-                    setUsageTotals((currentUsage) => ({
-                        input_tokens: Number(currentUsage.input_tokens || 0) + Number(result.usage.input_tokens || 0),
-                        output_tokens: Number(currentUsage.output_tokens || 0) + Number(result.usage.output_tokens || 0),
-                        total_tokens: Number(currentUsage.total_tokens || 0) + Number(result.usage.total_tokens || 0),
-                    }));
+                    activeUsageTotals = {
+                        input_tokens: Number(result.usage.input_tokens || 0),
+                        output_tokens: Number(result.usage.output_tokens || 0),
+                        total_tokens: Number(result.usage.total_tokens || 0),
+                    };
+                    setUsageTotals(activeUsageTotals);
                 }
 
                 const batch = result.batch || {};
-                offset = Number(batch.processed_to || offset + 10);
-                isFinal = Boolean(batch.is_final);
-                setProgress({
-                    processed: offset,
-                    total: Math.min(Number(batch.total_available || totalLimit), totalLimit),
+                const processedTo = Number(batch.processed_to || accumulatedCards.length || 10);
+                const isFinal = Boolean(batch.is_final);
+                setIsFinalBatch(isFinal);
+                const nextProgress = {
+                    processed: processedTo,
+                    total: totalLimit,
                     batch: batchNumber,
+                };
+                setAvailableCandidateCount(Number(batch.total_available || 0));
+                setProgress(nextProgress);
+                saveHistoryItem({
+                    local_id: localHistoryId,
+                    server_history_id: activeServerHistoryId,
+                    title: buildHistoryTitle(filterSnapshot),
+                    filters: filterSnapshot,
+                    filters_used: activeFiltersUsed,
+                    summary: activeSummary,
+                    cards: accumulatedCards,
+                    progress: nextProgress,
+                    usage: activeUsageTotals,
+                    total_available: Number(batch.total_available || 0),
+                    is_final: isFinal,
+                    updated_at: new Date().toISOString(),
                 });
-                batchNumber += 1;
             }
 
-            setMessage(stopRequestedRef.current ? 'AI Search stopped.' : 'AI Search completed.');
+            setMessage(stopRequestedRef.current ? 'AI Search stopped.' : 'First 10 PDFs processed. Click Next 10 PDFs to continue.');
         } catch (error) {
             setMessage(error.name === 'AbortError' ? 'AI Search stopped.' : (error.message || 'AI Search failed.'));
         }
 
         abortControllerRef.current = null;
         setLoading(false);
+    };
+
+    const runNextBatch = async () => {
+        if (loading || isFinalBatch) {
+            return;
+        }
+
+        const offset = Number(progress.processed || cards.length || 0);
+        const totalLimit = Math.max(10, Math.min(50, Number(filters.total_limit || progress.total || 50)));
+        setLoading(true);
+        setMessage('');
+        stopRequestedRef.current = false;
+        try {
+            const nextBatchNumber = Number(progress.batch || 0) + 1;
+            setProgress({ ...progress, batch: nextBatchNumber });
+            abortControllerRef.current = new AbortController();
+            const result = await runBatch(offset, totalLimit, abortControllerRef.current.signal, filters, serverHistoryId);
+            const nextCards = [...cards, ...(result.cards || [])];
+            const batch = result.batch || {};
+            const processedTo = Number(batch.processed_to || offset + (result.cards || []).length);
+            const finalBatch = Boolean(batch.is_final);
+            const nextUsageTotals = {
+                input_tokens: Number(usageTotals.input_tokens || 0) + Number(result.usage?.input_tokens || 0),
+                output_tokens: Number(usageTotals.output_tokens || 0) + Number(result.usage?.output_tokens || 0),
+                total_tokens: Number(usageTotals.total_tokens || 0) + Number(result.usage?.total_tokens || 0),
+            };
+
+            setCards(nextCards);
+            setFiltersUsed(result.filters_used || filtersUsed);
+            setSummary(result.summary || summary);
+            setUsageTotals(nextUsageTotals);
+            setServerHistoryId(Number(result.history_id || serverHistoryId || 0));
+            setIsFinalBatch(finalBatch);
+            setAvailableCandidateCount(Number(batch.total_available || availableCandidateCount || 0));
+            setProgress({
+                processed: processedTo,
+                total: totalLimit,
+                batch: nextBatchNumber,
+            });
+            setMessage(finalBatch ? 'All available batches completed.' : 'Next 10 PDFs processed.');
+            saveHistoryItem({
+                local_id: activeHistoryId || `search_${Date.now()}`,
+                server_history_id: Number(result.history_id || serverHistoryId || 0),
+                title: buildHistoryTitle(filters),
+                filters,
+                filters_used: result.filters_used || filtersUsed,
+                summary: result.summary || summary,
+                cards: nextCards,
+                progress: {
+                    processed: processedTo,
+                    total: totalLimit,
+                    batch: nextBatchNumber,
+                },
+                usage: nextUsageTotals,
+                total_available: Number(batch.total_available || availableCandidateCount || 0),
+                is_final: finalBatch,
+                updated_at: new Date().toISOString(),
+            });
+        } catch (error) {
+            setMessage(error.name === 'AbortError' ? 'AI Search stopped.' : (error.message || 'AI batch failed.'));
+        }
+        abortControllerRef.current = null;
+        setLoading(false);
+    };
+
+    const continueHistory = (historyItem) => {
+        setActiveHistoryId(historyItem.local_id);
+        setServerHistoryId(Number(historyItem.server_history_id || 0));
+        setFilters({ ...initialFilters, ...(historyItem.filters || {}) });
+        setCards(Array.isArray(historyItem.cards) ? historyItem.cards : []);
+        setFiltersUsed(historyItem.filters_used || {});
+        setSummary(historyItem.summary || '');
+        setUsageTotals(historyItem.usage || { input_tokens: 0, output_tokens: 0, total_tokens: 0 });
+        setProgress(historyItem.progress || { processed: 0, total: Number(historyItem.filters?.total_limit || 50), batch: 0 });
+        setAvailableCandidateCount(Number(historyItem.total_available || 0));
+        setIsFinalBatch(Boolean(historyItem.is_final));
+        setMessage('Previous AI search loaded. Click Next 10 PDFs to continue.');
     };
 
     const stopSearch = () => {
@@ -278,6 +485,10 @@ export default function AISearchPage({ currentUser }) {
         setMessage('');
         setProgress({ processed: 0, total: 50, batch: 0 });
         setUsageTotals({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
+        setActiveHistoryId(null);
+        setServerHistoryId(0);
+        setIsFinalBatch(false);
+        setAvailableCandidateCount(0);
     };
 
     const cardToCandidate = (card) => ({
@@ -337,6 +548,11 @@ export default function AISearchPage({ currentUser }) {
     const resumeUrl = resumePreview?.resume
         ? apiUrl(`get_resume.php?file=${encodeURIComponent(resumePreview.resume)}`)
         : '';
+    const completedProgress = Number(progress.processed || 0);
+    const progressTotal = Math.max(Number(progress.total || filters.total_limit || 50), 1);
+    const visualProgress = completedProgress;
+    const currentBatchStart = loading ? completedProgress + 1 : completedProgress;
+    const currentBatchEnd = loading ? Math.min(progressTotal, completedProgress + 10) : completedProgress;
 
     return (
         <div className="animate-in fade-in duration-500">
@@ -349,6 +565,45 @@ export default function AISearchPage({ currentUser }) {
                     <p className="text-slate-500 text-sm mt-1">Filter candidates first, then let AI score up to 50 resumes in batches of 10.</p>
                 </div>
             </div>
+
+            {searchHistory.length > 0 && (
+                <section className="glass-panel rounded-2xl p-4 mb-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
+                        <div>
+                            <h2 className="font-black text-slate-900">Last 5 AI Searches</h2>
+                            <p className="text-xs text-slate-500 mt-1">Pick an older run to restore the filters, cards, progress, and continue with the next batch.</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                        {searchHistory.map((historyItem) => (
+                            <button
+                                key={historyItem.local_id}
+                                type="button"
+                                onClick={() => continueHistory(historyItem)}
+                                className={`text-left rounded-2xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                                    activeHistoryId === historyItem.local_id
+                                        ? 'border-blue-300 bg-blue-50'
+                                        : 'border-slate-200 bg-white'
+                                }`}
+                            >
+                                <div className="font-black text-sm text-slate-900 line-clamp-2">{historyItem.title || 'AI Search'}</div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    {Number(historyItem.progress?.processed || 0)}/{Number(historyItem.progress?.total || historyItem.filters?.total_limit || 50)} processed
+                                </div>
+                                <div className="mt-2 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-blue-600"
+                                        style={{ width: `${progressPercent(historyItem.progress?.processed, historyItem.progress?.total || historyItem.filters?.total_limit || 50)}%` }}
+                                    />
+                                </div>
+                                <div className="mt-2 text-[11px] text-slate-400">
+                                    {historyItem.is_final ? 'Completed' : 'Can continue'} - {historyItem.updated_at ? new Date(historyItem.updated_at).toLocaleString('en-IN') : ''}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             <form onSubmit={runSearch} className="glass-panel rounded-2xl p-5 mb-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
@@ -420,17 +675,26 @@ export default function AISearchPage({ currentUser }) {
                     <div className="w-full sm:max-w-xl">
                         <div className="flex justify-between text-sm text-slate-500 mb-2">
                             <span>{loading ? `Processing batch ${progress.batch}` : (message || 'Ready to search')}</span>
-                            <span>{progress.processed}/{progress.total}</span>
+                            <span>{completedProgress}/{progressTotal} completed</span>
                         </div>
-                        <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                        <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden relative">
                             <div
-                                className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-300"
-                                style={{ width: `${Math.min(100, Math.round((progress.processed / Math.max(progress.total, 1)) * 100))}%` }}
+                                className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-500"
+                                style={{ width: `${progressPercent(visualProgress, progressTotal)}%` }}
                             />
+                            {loading && (
+                                <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-white/70 to-transparent animate-pulse" />
+                            )}
                         </div>
+                        {loading && (
+                            <div className="mt-2 text-xs font-semibold text-blue-600">
+                                Currently processing candidates {currentBatchStart}-{currentBatchEnd}. Completed count will update after Gemini returns this batch.
+                            </div>
+                        )}
                         <div className="mt-2 text-xs font-semibold text-slate-500">
                             Tokens used: {Number(usageTotals.total_tokens || 0).toLocaleString('en-IN')}
                             {' '}({Number(usageTotals.input_tokens || 0).toLocaleString('en-IN')} input / {Number(usageTotals.output_tokens || 0).toLocaleString('en-IN')} output)
+                            {availableCandidateCount > 0 ? ` · ${availableCandidateCount} matching candidates available` : ''}
                         </div>
                     </div>
                     <div className="flex gap-2">
@@ -480,13 +744,24 @@ export default function AISearchPage({ currentUser }) {
                         <h2 className="font-black text-slate-900">AI Results</h2>
                         <p className="text-sm text-slate-500">Showing {cards.length} candidate cards. Sort after or during batch loading.</p>
                     </div>
-                    <label className="text-sm font-bold text-slate-700">
-                        Sort by AI score
-                        <select value={scoreSort} onChange={(event) => setScoreSort(event.target.value)} className="ml-0 md:ml-3 mt-2 md:mt-0 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm font-medium">
-                            <option value="desc">Highest first</option>
-                            <option value="asc">Lowest first</option>
-                        </select>
-                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                        <button
+                            type="button"
+                            onClick={runNextBatch}
+                            disabled={loading || isFinalBatch || Number(progress.processed || 0) >= Number(progress.total || 0)}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-black hover:bg-slate-800 disabled:opacity-50"
+                        >
+                            {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                            Next 10 PDFs
+                        </button>
+                        <label className="text-sm font-bold text-slate-700">
+                            Sort by AI score
+                            <select value={scoreSort} onChange={(event) => setScoreSort(event.target.value)} className="ml-0 md:ml-3 mt-2 md:mt-0 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm font-medium">
+                                <option value="desc">Highest first</option>
+                                <option value="asc">Lowest first</option>
+                            </select>
+                        </label>
+                    </div>
                 </div>
             )}
 
