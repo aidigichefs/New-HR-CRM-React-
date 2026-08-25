@@ -253,7 +253,7 @@ export default function CandidatesPage({ currentUser }) {
                                 <th className="px-6 py-4">HR</th>
                                 <th className="px-6 py-4">Candidate</th>
                                 <th className="px-6 py-4">Roles</th>
-                                <th className="px-6 py-4">Exp & Salary</th>
+                                <th className="px-6 py-4 w-[180px] max-w-[180px]">Exp & Salary</th>
                                 <th className="px-6 py-4">Notice Period</th>
                                 <th className="px-6 py-4">Date Added</th>
                             </tr>
@@ -356,9 +356,12 @@ export default function CandidatesPage({ currentUser }) {
                                             <div className="text-xs text-slate-500 mt-1">{candidate.city || 'No city'}</div>
                                         </td>
 
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 w-[180px] max-w-[180px] whitespace-normal">
                                             <div className="text-slate-700 font-medium">{formatExperienceForDisplay(candidate.experience)}</div>
-                                            <div className="text-emerald-600 font-semibold text-xs mt-1">
+                                            <div
+                                                className="max-w-[150px] break-words text-emerald-600 font-semibold text-xs leading-relaxed mt-1"
+                                                title={`${formatSalaryForDisplay(candidate.current_ctc)} to ${formatSalaryForDisplay(candidate.expected_ctc)}`}
+                                            >
                                                 {formatSalaryForDisplay(candidate.current_ctc)} to {formatSalaryForDisplay(candidate.expected_ctc)}
                                             </div>
                                         </td>
