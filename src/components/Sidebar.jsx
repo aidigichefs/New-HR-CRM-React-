@@ -1,6 +1,7 @@
 import React from 'react';
-import { Home, Users, UserSquare2, Menu, X, Settings, LogOut, Bot, Mail } from 'lucide-react';
+import { Home, Users, UserSquare2, X, Settings, LogOut, Bot, Mail } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { crmAssetUrl } from '../lib/api';
 
 export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePage, currentUser, onLogout }) {
     const navItems = [
@@ -10,6 +11,13 @@ export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePa
         { id: 'ai-search', label: 'AI Search', icon: Bot },
         { id: 'send-email', label: 'Send Email', icon: Mail },
     ];
+    const profileImageUrl = currentUser?.profile_image ? crmAssetUrl(currentUser.profile_image) : '';
+    const initials = (currentUser?.name || 'HR User')
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase();
 
     return (
         <>
@@ -61,13 +69,27 @@ export default function Sidebar({ isOpen, toggleSidebar, activePage, setActivePa
                 {/* Footer Area */}
                 <div className="p-4 border-t border-slate-800">
                     <div className="mb-3 rounded-2xl bg-slate-800/70 p-3">
-                        <div className="text-sm font-bold text-white truncate">{currentUser?.name || 'HR User'}</div>
-                        <div className="text-xs text-slate-400 truncate">{currentUser?.email || ''}</div>
-                        <div className="mt-2 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                        <div className="flex items-center gap-3">
+                            {profileImageUrl ? (
+                                <img src={profileImageUrl} alt={currentUser?.name || 'HR User'} className="h-10 w-10 rounded-2xl object-cover ring-1 ring-slate-700" />
+                            ) : (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-300 to-blue-300 text-xs font-black text-slate-900">
+                                    {initials}
+                                </div>
+                            )}
+                            <div className="min-w-0">
+                                <div className="text-sm font-bold text-white truncate">{currentUser?.name || 'HR User'}</div>
+                                <div className="text-xs text-slate-400 truncate">{currentUser?.email || ''}</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
                             {currentUser?.role || 'User'}
                         </div>
                     </div>
-                    <button className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-medium text-sm text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <button
+                        onClick={() => { setActivePage('home'); if (window.innerWidth < 1024) toggleSidebar(); }}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-medium text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
+                    >
                         <Settings size={18} className="text-slate-400" />
                         Settings
                     </button>

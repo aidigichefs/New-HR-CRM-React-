@@ -20,6 +20,7 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
         profile_image: currentUser?.profile_image || '',
     });
     const [saving, setSaving] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [message, setMessage] = useState('');
     const [usage, setUsage] = useState(null);
     const [usageLoading, setUsageLoading] = useState(false);
@@ -29,6 +30,55 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
 
     const updateField = (event) => {
         setForm({ ...form, [event.target.name]: event.target.value });
+    };
+
+    useEffect(() => {
+        const updatedNameParts = splitName(currentUser?.name);
+        setForm({
+            firstname: currentUser?.firstname || updatedNameParts.firstname,
+            lastname: currentUser?.lastname || updatedNameParts.lastname,
+            email: currentUser?.email || '',
+            phone: currentUser?.phone || '',
+            profile_image: currentUser?.profile_image || '',
+        });
+    }, [currentUser]);
+
+    const uploadProfileImage = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) {
+            return;
+        }
+
+        setUploadingImage(true);
+        setMessage('');
+
+        try {
+            const imageData = new FormData();
+            imageData.append('profile_image', file);
+
+            const response = await fetch(apiUrl('upload_profile_image.php'), {
+                method: 'POST',
+                headers: {
+                    'X-HR-SESSION': currentUser?.session_token || '',
+                },
+                body: imageData,
+            });
+            const json = await response.json();
+            if (!response.ok || !json.success) {
+                throw new Error(json.message || 'Could not upload profile image.');
+            }
+
+            const nextProfileImage = json.data.profile_image || '';
+            const nextUser = { ...currentUser, profile_image: nextProfileImage };
+            setForm((previous) => ({ ...previous, profile_image: nextProfileImage }));
+            onUserUpdated(nextUser);
+            setMessage('Profile image updated successfully.');
+        } catch (error) {
+            setMessage(error.message || 'Could not upload profile image.');
+        }
+
+        event.target.value = '';
+        setUploadingImage(false);
     };
 
     const formatNumber = (value) => Number(value || 0).toLocaleString('en-IN');
@@ -67,7 +117,10 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
         try {
             const response = await fetch(apiUrl('update_user_profile.php'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-HR-SESSION': currentUser?.session_token || '',
+                },
                 body: JSON.stringify({ id: currentUser.id, ...form }),
             });
             const json = await response.json();
@@ -106,7 +159,7 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
                             </div>
                         )}
                         <div className="absolute -bottom-3 -right-3 h-12 w-12 rounded-2xl bg-slate-950 text-white flex items-center justify-center shadow-lg">
-                            <Camera size={20} />
+                            {uploadingImage ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
                         </div>
                     </div>
 
@@ -116,6 +169,12 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
                         <span className="mt-4 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 border border-emerald-100">
                             {currentUser?.role || 'User'}
                         </span>
+                        <label className="mt-5 inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm transition-colors hover:bg-slate-50">
+                            {uploadingImage ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                            {form.profile_image ? 'Change photo' : 'Add photo'}
+                            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={uploadProfileImage} disabled={uploadingImage} />
+                        </label>
+                        <p className="mt-2 text-xs font-semibold text-slate-400">JPG, PNG or WEBP. Max 3 MB.</p>
                     </div>
                 </section>
 
@@ -147,11 +206,6 @@ export default function DashboardPage({ currentUser, onUserUpdated }) {
                         <label className="text-sm font-bold text-slate-700">
                             Phone
                             <input name="phone" value={form.phone} onChange={updateField} className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30" />
-                        </label>
-                        <label className="text-sm font-bold text-slate-700 md:col-span-2">
-                            Profile image path
-                            <input name="profile_image" value={form.profile_image} onChange={updateField} placeholder="profile/deep.png" className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30" />
-                            <span className="mt-2 block text-xs font-medium text-slate-400">Use paths from the CRM root, for example: profile/deep.png</span>
                         </label>
                     </div>
 
