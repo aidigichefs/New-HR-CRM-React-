@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Eye, Edit, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, RefreshCw, Eye, Edit, Filter, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import CandidateEditModal from '../components/CandidateEditModal';
 import { apiUrl } from '../lib/api';
 
@@ -71,6 +71,32 @@ function formatSalaryForDisplay(value) {
     return `${formattedLpa} LPA`;
 }
 
+function buildCandidateParams(page, limit, activeFilters) {
+    const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+    });
+
+    Object.entries(activeFilters).forEach(([key, value]) => {
+        if (String(value || '').trim() !== '') {
+            params.set(key, value);
+        }
+    });
+
+    return params;
+}
+
+function escapeCsvValue(value) {
+    let text = String(value ?? '').replace(/\r?\n/g, ' ').trim();
+
+    // Prevent spreadsheet applications from treating submitted text as a formula.
+    if (/^[=+\-@]/.test(text)) {
+        text = `'${text}`;
+    }
+
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
 export default function CandidatesPage({ currentUser }) {
     const [candidates, setCandidates] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -79,20 +105,12 @@ export default function CandidatesPage({ currentUser }) {
     const [appliedFilters, setAppliedFilters] = useState(initialFilters);
     const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
     const [roles, setRoles] = useState([]);
+    const [exporting, setExporting] = useState(false);
 
     const fetchCandidates = async (page = pagination.page, nextFilters = appliedFilters) => {
         setLoading(true);
         try {
-            const params = new URLSearchParams({
-                page: String(page),
-                limit: String(pagination.limit),
-            });
-
-            Object.entries(nextFilters).forEach(([key, value]) => {
-                if (String(value || '').trim() !== '') {
-                    params.set(key, value);
-                }
-            });
+            const params = buildCandidateParams(page, pagination.limit, nextFilters);
 
             const response = await fetch(apiUrl(`get_candidates.php?${params.toString()}`));
             const json = await response.json();
@@ -139,6 +157,88 @@ export default function CandidatesPage({ currentUser }) {
     const resetFilters = () => {
         setFilters(initialFilters);
         setAppliedFilters(initialFilters);
+    };
+
+    const downloadCsv = async () => {
+        setExporting(true);
+
+        try {
+            const exportLimit = 100;
+            const firstResponse = await fetch(apiUrl(`get_candidates.php?${buildCandidateParams(1, exportLimit, appliedFilters).toString()}`));
+            const firstJson = await firstResponse.json();
+
+            if (!firstResponse.ok || !firstJson.success) {
+                throw new Error(firstJson.message || 'Unable to load candidates for export.');
+            }
+
+            const allCandidates = Array.isArray(firstJson.data) ? [...firstJson.data] : [];
+            const totalPages = Math.max(1, Number(firstJson.pagination?.pages) || 1);
+
+            for (let page = 2; page <= totalPages; page += 1) {
+                const response = await fetch(apiUrl(`get_candidates.php?${buildCandidateParams(page, exportLimit, appliedFilters).toString()}`));
+                const json = await response.json();
+
+                if (!response.ok || !json.success) {
+                    throw new Error(json.message || `Unable to export page ${page}.`);
+                }
+
+                if (Array.isArray(json.data)) {
+                    allCandidates.push(...json.data);
+                }
+            }
+
+            if (allCandidates.length === 0) {
+                window.alert('No candidates found for the applied filters.');
+                return;
+            }
+
+            const headers = [
+                'Candidate ID', 'Name', 'Email', 'Phone', 'Roles', 'Experience',
+                'Current CTC', 'Expected CTC', 'Notice Period', 'City', 'Willing to Relocate',
+                'Status', 'Source', 'Date Added', 'Resume', 'Portfolio',
+                'Latest HR', 'Latest HR Comment', 'Latest HR Comment Date',
+            ];
+            const rows = allCandidates.map((candidate) => [
+                candidate.id,
+                candidate.name,
+                candidate.email,
+                candidate.phone,
+                candidate.roles,
+                formatExperienceForDisplay(candidate.experience),
+                formatSalaryForDisplay(candidate.current_ctc),
+                formatSalaryForDisplay(candidate.expected_ctc),
+                formatNoticePeriod(candidate.notice_period),
+                candidate.city,
+                candidate.relocate,
+                candidate.status,
+                candidate.source,
+                candidate.date_added,
+                candidate.resume ? apiUrl(`get_resume.php?file=${encodeURIComponent(candidate.resume)}`) : '',
+                candidate.portfolio,
+                candidate.latest_hr_name,
+                candidate.latest_hr_comment,
+                candidate.latest_hr_comment_date,
+            ]);
+            const csv = [headers, ...rows]
+                .map((row) => row.map(escapeCsvValue).join(','))
+                .join('\r\n');
+            const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const date = new Date().toISOString().slice(0, 10);
+
+            link.href = objectUrl;
+            link.download = `digichefs-candidates-${date}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error('Failed to export candidates:', error);
+            window.alert(error.message || 'Something went wrong while creating the CSV.');
+        } finally {
+            setExporting(false);
+        }
     };
 
     const goToPage = (page) => {
@@ -196,10 +296,16 @@ export default function CandidatesPage({ currentUser }) {
                     <p className="text-slate-500 text-sm mt-1">Review candidate applications with live CRM filters and activity context.</p>
                 </div>
 
-                <button onClick={() => fetchCandidates(pagination.page, appliedFilters)} className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm text-slate-700 text-sm font-medium">
-                    <RefreshCw size={18} className={loading ? 'animate-spin text-blue-600' : ''} />
-                    Refresh
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={downloadCsv} disabled={exporting || loading} className="flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 border border-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed">
+                        {exporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                        {exporting ? 'Preparing CSV...' : 'Download CSV'}
+                    </button>
+                    <button onClick={() => fetchCandidates(pagination.page, appliedFilters)} className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm text-slate-700 text-sm font-medium">
+                        <RefreshCw size={18} className={loading ? 'animate-spin text-blue-600' : ''} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             <form onSubmit={applyFilters} className="glass-panel rounded-2xl p-4 mb-5">
