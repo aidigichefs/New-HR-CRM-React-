@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Eye, Edit, Filter, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Loader2, RefreshCw, Eye, Edit, Filter, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
 import CandidateEditModal from '../components/CandidateEditModal';
 import { apiUrl } from '../lib/api';
 
@@ -297,8 +297,8 @@ export default function CandidatesPage({ currentUser }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={downloadCsv} disabled={exporting || loading} className="flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 border border-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed">
-                        {exporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                    <button type="button" onClick={downloadCsv} disabled={exporting || loading} title="Download filtered candidates as CSV" aria-label="Download filtered candidates as CSV" className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 border border-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm text-white text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                        {exporting ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} aria-hidden="true" />}
                         {exporting ? 'Preparing CSV...' : 'Download CSV'}
                     </button>
                     <button onClick={() => fetchCandidates(pagination.page, appliedFilters)} className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm text-slate-700 text-sm font-medium">
